@@ -17,7 +17,7 @@ Name=Wallpaper Slideshow
 Exec=%s'''
 
 
-class WPslide(ArgumentParser):
+class WPSlide(ArgumentParser):
     def __init__(self):
         ArgumentParser.__init__(self, prog='wpslide', description='Wallpaper Slideshow')
         self.add_argument('-d', '--directory', action='store', type=str, dest='picdir', default=os.path.expanduser('~/Pictures'), metavar='DIR', help='path to directory containing picture files (%(default)s)')
@@ -27,6 +27,7 @@ class WPslide(ArgumentParser):
         self.add_argument('--schema', action='store', type=str, dest='gschema', default='org.gnome.desktop.background', metavar='SCHEMA', help='Gnome property schema for background (%(default)s)')
         self.add_argument('--keys', action='store', type=str, dest='gkeys', default='picture-uri,picture-uri-dark', metavar='KEYS', help='Gnome property keys for background (%(default)s)')
         self.add_argument('-o', '--output', action='store', type=str, dest='output', default=os.path.expanduser('~/.config/autostart/wpslide.desktop'), metavar='PATH', help='file where to write desktop (%(default)s)')
+        self.add_argument('--history', action='store', type=str, dest='history', default=os.path.expanduser('~/.config/wpslide/history'), metavar='PATH', help='file containing wallpaper history')
         self.add_argument('action', action='store', type=str, choices=('start', 'desktop'), metavar='ACTION', help='start: start slideshow, desktop: write desktop file')
 
     def run(self):
@@ -34,16 +35,20 @@ class WPslide(ArgumentParser):
         if self.args.action == 'start':
             self.start()
         elif self.args.action == 'desktop':
-            self.desktop()
+            self.write_desktop()
         else:
             raise RuntimeError('action: %s?' % self.args.action)
 
     def start(self):
+        history = self.read_history()
         piclist = listdir(self.args.picdir)
         gkeys = tuple(k.strip() for k in self.args.gkeys.split(','))
         while True:
             shuffle(piclist)
             for pic in piclist:
+                if pic in history:
+                    sys.stderr.write('Skip %s\n' % pic)
+                    continue
                 abspic = os.path.normpath(os.path.join(self.args.picdir, pic))
                 picuri = 'file://' + urllib.parse.quote(abspic)
                 for key in gkeys:
@@ -51,7 +56,26 @@ class WPslide(ArgumentParser):
                     subprocess.run(cmdline)
                 cmdline = [self.args.notify, 'Set wallpaper', '-i', abspic, pic]
                 subprocess.run(cmdline)
+                self.add_to_history(pic)
                 sleep(self.args.delay * 60)
+            history = set()
+            self.clear_history()
+
+    def read_history(self):
+        if os.path.isfile(self.args.history):
+            with open(self.args.history) as f:
+                return set(line.strip() for line in f)
+        else:
+            return set()
+
+    def add_to_history(self, pic):
+        with WPSlide._open(self.args.history, mode='a') as f:
+            f.write(pic)
+            f.write('\n')
+
+    def clear_history(self):
+        with WPSlide._open(self.args.history):
+            pass
 
     @staticmethod
     def _mapargs():
@@ -75,11 +99,17 @@ class WPslide(ArgumentParser):
                 continue
             yield arg
 
-    def desktop(self):
-        cmdline = [quote(arg) for arg in WPslide._mapargs()]
-        with open(self.args.output, 'w') as f:
+    @staticmethod
+    def _open(path, mode='w'):
+        dirname = os.path.dirname(path)
+        os.makedirs(dirname, exist_ok=True)
+        return open(path, mode)
+
+    def write_desktop(self):
+        cmdline = [quote(arg) for arg in WPSlide._mapargs()]
+        with WPSlide._open(self.args.output) as f:
             f.write(DESKTOP % ' '.join(cmdline))
 
 
 if __name__ == '__main__':
-    WPslide().run()
+    WPSlide().run()
