@@ -49,7 +49,7 @@ class WPslide(ArgumentParser):
                 for key in gkeys:
                     cmdline = [self.args.gsettings, 'set', self.args.gschema, key, picuri]
                     subprocess.run(cmdline)
-                cmdline = [self.args.notify, 'Set wallpaper', '-i', abspic, abspic]
+                cmdline = [self.args.notify, 'Set wallpaper', '-i', abspic, pic]
                 subprocess.run(cmdline)
                 sleep(self.args.delay * 60)
 
